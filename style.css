@@ -33,6 +33,25 @@ header h1 {
     gap: 12px;
 }
 
+.logo-mark {
+    width: 0.8em;
+    height: 0.8em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background-color: #00c853;
+    color: #ffffff;
+    font-size: inherit;
+    transform: translateY(0.08em);
+}
+
+.logo-mark i {
+    font-size: 0.42em;
+    transform: translateX(0.06em);
+}
+
 header p {
     color: #666;
     font-size: 1.05rem;

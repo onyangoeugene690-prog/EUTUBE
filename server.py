@@ -264,15 +264,25 @@ def stream():
             info = ydl.extract_info(url, download=False)
             formats = info.get('formats', [])
 
-            stream_url = None
-
-            for f in formats:
-                if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('url'):
-                    if f.get('ext') == 'mp4':
-                        stream_url = f.get('url')
-                        break
-                    elif not stream_url:
-                        stream_url = f.get('url')
+            playable_formats = [
+                f for f in formats
+                if f.get('vcodec') not in (None, 'none')
+                and f.get('acodec') not in (None, 'none')
+                and f.get('url')
+            ]
+            compatible_formats = [
+                f for f in playable_formats
+                if f.get('ext') == 'mp4'
+                and f.get('vcodec', '').startswith('avc1')
+                and f.get('acodec', '').startswith('mp4a')
+            ]
+            candidate_formats = compatible_formats or playable_formats
+            best_format = max(
+                candidate_formats,
+                key=lambda f: (f.get('height') or 0, f.get('tbr') or 0, f.get('fps') or 0),
+                default=None
+            )
+            stream_url = best_format.get('url') if best_format else None
 
             if not stream_url:
                 stream_url = info.get('url')
@@ -307,9 +317,36 @@ def get_formats():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             raw_formats = info.get('formats', [])
+            duration = info.get('duration')
+
+            def estimate_size_bytes(stream_format):
+                size = stream_format.get('filesize') or stream_format.get('filesize_approx')
+                if size:
+                    return size
+                bitrate = stream_format.get('tbr')
+                if duration and bitrate:
+                    return bitrate * 1000 * duration / 8
+                return None
+
+            def format_size_label(size_bytes):
+                if size_bytes is None:
+                    return ''
+                if size_bytes >= 1024 ** 3:
+                    return f' (about {size_bytes / (1024 ** 3):.2f} GB)'
+                return f' (about {size_bytes / (1024 ** 2):.0f} MB)'
 
             available_heights = set()
             raw_streams = []
+            audio_candidates = [
+                stream_format for stream_format in raw_formats
+                if stream_format.get('acodec') not in (None, 'none')
+                and stream_format.get('vcodec') == 'none'
+            ]
+            best_audio = max(
+                audio_candidates,
+                key=lambda stream_format: stream_format.get('abr') or stream_format.get('tbr') or 0,
+                default=None
+            )
 
             for f in raw_formats:
                 height = f.get('height')
@@ -320,10 +357,16 @@ def get_formats():
                 fid = f.get('format_id')
                 ext = f.get('ext', 'mp4')
                 fps = f.get('fps')
-                filesize = f.get('filesize') or f.get('filesize_approx')
 
                 if fid and vcodec != 'none':
-                    size_str = f" (~{filesize / (1024*1024):.1f}MB)" if filesize else ""
+                    stream_size = estimate_size_bytes(f)
+                    if f.get('acodec') in (None, 'none') and best_audio:
+                        audio_size = estimate_size_bytes(best_audio)
+                        if stream_size is not None and audio_size is not None:
+                            stream_size += audio_size
+                        else:
+                            stream_size = None
+                    size_str = format_size_label(stream_size)
                     fps_str = f"{int(fps)}fps" if fps and fps > 30 else ""
                     res_str = f"{height}p" if height else "Video"
                     raw_streams.append({
@@ -332,8 +375,6 @@ def get_formats():
                     })
 
             sorted_res = sorted(list(available_heights), reverse=True)
-            if not sorted_res:
-                sorted_res = [2160, 1440, 1080, 720, 480, 360, 240, 144]
 
             best_formats = [
                 {'id': 'video_best_mp4', 'label': '🌟 Best Quality Available (MP4)'},
@@ -366,11 +407,45 @@ def get_formats():
                 else:
                     label = f"144p SD ({res}p)"
 
+                video_candidates = [
+                    stream_format for stream_format in raw_formats
+                    if stream_format.get('height')
+                    and stream_format.get('height') <= res
+                    and stream_format.get('vcodec') not in (None, 'none')
+                ]
+                best_video = max(
+                    video_candidates,
+                    key=lambda stream_format: (stream_format.get('height') or 0, stream_format.get('tbr') or 0),
+                    default=None
+                )
+                webm_video = max(
+                    [stream_format for stream_format in video_candidates if stream_format.get('ext') == 'webm'],
+                    key=lambda stream_format: (stream_format.get('height') or 0, stream_format.get('tbr') or 0),
+                    default=best_video
+                )
+                webm_audio = max(
+                    [stream_format for stream_format in audio_candidates if stream_format.get('ext') == 'webm'],
+                    key=lambda stream_format: stream_format.get('abr') or stream_format.get('tbr') or 0,
+                    default=best_audio
+                )
+
                 containers_to_use = video_containers if res <= 720 else ['mp4', 'webm', 'mkv', 'mov', 'avi']
                 for ext in containers_to_use:
+                    source_video = webm_video if ext == 'webm' else best_video
+                    source_audio = webm_audio if ext == 'webm' else best_audio
+                    estimated_size = None
+                    if source_video:
+                        video_size = estimate_size_bytes(source_video)
+                        if source_audio:
+                            audio_size = estimate_size_bytes(source_audio)
+                            if video_size is not None and audio_size is not None:
+                                estimated_size = video_size + audio_size
+                        elif source_video.get('acodec') not in (None, 'none'):
+                            estimated_size = video_size
+
                     video_formats.append({
                         'id': f'video_{res}_{ext}',
-                        'label': f'{label} - {ext.upper()}'
+                        'label': f'{label} - {ext.upper()}{format_size_label(estimated_size)}'
                     })
 
             audio_formats = [
@@ -663,4 +738,4 @@ def prewarm_cache():
 if __name__ == '__main__':
     print("Starting EuTube Server at http://localhost:5000")
     threading.Thread(target=prewarm_cache, daemon=True).start()
-    app.run(host='0.0.0.0', debug=True, port=5000)
+    app.run(host='0.0.0.0', debug=False, port=int(os.environ.get('PORT', 5000)))

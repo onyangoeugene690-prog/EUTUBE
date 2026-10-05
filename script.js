@@ -3,10 +3,10 @@ let selectedFormatId = 'video_1080_webm';
 let currentVideoId = '';
 let currentPlayerMode = 'embed';
 
-// Dynamically determine server API URL so it works when opened via http://localhost:5000 or file://
-const API_BASE = (window.location.protocol === 'file:' || !window.location.origin.includes('5000'))
-    ? 'http://localhost:5000'
-    : '';
+const configuredApiBase = document.querySelector('meta[name="api-base"]')?.content.trim();
+const isLocalFrontend = window.location.protocol === 'file:'
+    || ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const API_BASE = configuredApiBase || (isLocalFrontend ? 'http://localhost:5000' : '');
 
 function extractVideoId(url) {
     if (!url) return null;
@@ -27,6 +27,7 @@ function buildDefaultFormatOptions() {
             <option value="video_best_avi">Best Quality Available (AVI)</option>
         </optgroup>
         <optgroup label="🎬 Video Resolutions & Formats">
+            <option value="video_4320_mp4">8K Ultra HD (4320p) - MP4</option>
             <option value="video_2160_mp4">4K Ultra HD (2160p) - MP4</option>
             <option value="video_2160_webm">4K Ultra HD (2160p) - WEBM</option>
             <option value="video_2160_mkv">4K Ultra HD (2160p) - MKV</option>
@@ -66,8 +67,19 @@ function buildDefaultFormatOptions() {
             <option value="audio_aac">AAC Audio</option>
         </optgroup>
     `;
-    selectedFormatId = 'video_1080_mp4';
+    selectedFormatId = 'video_2160_mp4';
     select.value = selectedFormatId;
+}
+
+function selectPreferredFormat(select) {
+    const preferred = Array.from(select.options).find(option => option.value === 'video_2160_mp4')
+        || Array.from(select.options).find(option => option.value === 'video_best_mp4')
+        || select.options[0];
+
+    if (preferred) {
+        selectedFormatId = preferred.value;
+        select.value = selectedFormatId;
+    }
 }
 
 function filterFormatOptions(category, evt) {
@@ -141,17 +153,13 @@ async function loadAvailableFormats(url) {
                     }
                 });
                 select.innerHTML = html;
-                if (select.options.length > 0) {
-                    selectedFormatId = select.options[0].value;
-                    select.value = selectedFormatId;
-                }
+                selectPreferredFormat(select);
                 return;
             } else if (data.formats && data.formats.length) {
                 select.innerHTML = data.formats
                     .map(format => `<option value="${format.id}">${format.label}</option>`)
                     .join('');
-                selectedFormatId = data.formats[0].id;
-                select.value = selectedFormatId;
+                selectPreferredFormat(select);
                 return;
             }
         }
@@ -369,10 +377,18 @@ async function switchPlayerMode(mode) {
                 const data = await response.json();
 
                 if (response.ok && data.stream_url) {
+                    html5Player.onerror = () => {
+                        status.innerText = 'This stream could not be played by your browser. Try YouTube Player or Watch on YouTube.';
+                        status.style.color = 'red';
+                    };
+                    html5Player.onplaying = () => {
+                        status.innerText = 'Streaming directly via HTML5 Video Player.';
+                        status.style.color = '#00c853';
+                    };
                     html5Player.src = data.stream_url;
                     html5Player.play().catch(e => console.warn('Autoplay prevented by browser policy:', e));
-                    status.innerText = 'Streaming directly via HTML5 Video Player.';
-                    status.style.color = '#00c853';
+                    status.innerText = 'Stream loaded. Press play if playback does not start automatically.';
+                    status.style.color = '#0066cc';
                 } else {
                     status.innerText = 'Direct stream unavailable: ' + (data.error || 'Could not retrieve direct link');
                     status.style.color = 'red';
@@ -410,60 +426,17 @@ function processDownload(format) {
         return;
     }
 
-    status.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Preparing high quality ${format.toUpperCase()} download... this may take a moment.`;
+    status.innerText = `Preparing ${format.toUpperCase()} download... Your browser will save the file when it's ready.`;
     status.style.color = '#0066cc';
 
-    fetch(`${API_BASE}/api/download?url=${encodeURIComponent(url)}&format=${format}`)
-        .then(async response => {
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || 'The download could not be created.');
-            }
+    const downloadUrl = new URL(`${API_BASE}/api/download`, window.location.href);
+    downloadUrl.searchParams.set('url', url);
+    downloadUrl.searchParams.set('format', format);
 
-            const blob = await response.blob();
-            const disposition = response.headers.get('Content-Disposition') || response.headers.get('content-disposition') || '';
-            let filename = '';
-
-            if (disposition) {
-                const utf8Match = disposition.match(/filename\*=utf-8''([^";]+)/i);
-                const standardMatch = disposition.match(/filename="?([^";]+)"?/i);
-                if (utf8Match && utf8Match[1]) {
-                    filename = decodeURIComponent(utf8Match[1]);
-                } else if (standardMatch && standardMatch[1]) {
-                    filename = standardMatch[1];
-                }
-            }
-
-            if (!filename) {
-                let ext = 'mp4';
-                if (format.includes('webm')) ext = 'webm';
-                else if (format.includes('mkv')) ext = 'mkv';
-                else if (format.includes('mp3')) ext = 'mp3';
-                else if (format.includes('m4a')) ext = 'm4a';
-                else if (format.includes('wav')) ext = 'wav';
-                else if (format.includes('flac')) ext = 'flac';
-                else if (format.includes('ogg')) ext = 'ogg';
-                else if (format.includes('aac')) ext = 'aac';
-                else if (format.includes('avi')) ext = 'avi';
-                else if (format.includes('mov')) ext = 'mov';
-                filename = `eutube-video.${ext}`;
-            }
-
-            const downloadUrl = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-
-            link.href = downloadUrl;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(downloadUrl);
-            status.innerText = 'Download completed successfully!';
-            status.style.color = '#00c853';
-        })
-        .catch(error => {
-            status.innerText = error.message;
-            status.style.color = 'red';
-            console.error(error);
-        });
+    const link = document.createElement('a');
+    link.href = downloadUrl.toString();
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
 }

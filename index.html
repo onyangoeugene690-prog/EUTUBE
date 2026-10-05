@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="api-base" content="">
     <title>EuTube - YouTube Downloader & Player</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -10,7 +11,7 @@
 <body>
     <div class="container">
         <header>
-            <h1><i class="fab fa-youtube"></i> EuTube</h1>
+            <h1><span class="logo-mark" aria-hidden="true"><i class="fas fa-play"></i></span> EuTube</h1>
             <p>Fetch, stream, and save high quality 4K, WEBM, MP4 and MP3 EuTube videos and audios.</p>
         </header>
 
@@ -73,7 +74,8 @@
                                     <option value="video_best_avi">Best Quality Available (AVI)</option>
                                 </optgroup>
                                 <optgroup label="🎬 Video Resolutions & Formats">
-                                    <option value="video_2160_mp4">4K Ultra HD (2160p) - MP4</option>
+                                    <option value="video_4320_mp4">8K Ultra HD (4320p) - MP4</option>
+                                    <option value="video_2160_mp4" selected>4K Ultra HD (2160p) - MP4</option>
                                     <option value="video_2160_webm">4K Ultra HD (2160p) - WEBM</option>
                                     <option value="video_2160_mkv">4K Ultra HD (2160p) - MKV</option>
                                     <option value="video_1440_mp4">2K QHD (1440p) - MP4</option>
