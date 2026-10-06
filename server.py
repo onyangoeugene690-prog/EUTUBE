@@ -13,7 +13,7 @@ import imageio_ffmpeg
 app = Flask(__name__, static_folder='.', static_url_path='')
 
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
-MAX_SEARCH_RESULTS = 100
+MAX_SEARCH_RESULTS = 500
 SEARCH_TIMEOUT_SECONDS = 8
 SEARCH_REQUEST_TIMEOUT_SECONDS = 4
 
@@ -572,6 +572,8 @@ def download():
         'no_warnings': True,
         'no_color': True,
         'ffmpeg_location': FFMPEG_EXE,
+        'concurrent_fragment_downloads': 8,
+        'http_chunk_size': 10 * 1024 * 1024,
     }
 
     mimetype = 'video/mp4'

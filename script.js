@@ -317,6 +317,7 @@ function renderVideoGrid(videos) {
         return;
     }
 
+    const cards = document.createDocumentFragment();
     videos.forEach(video => {
         const card = document.createElement('div');
         card.className = 'video-card';
@@ -335,8 +336,9 @@ function renderVideoGrid(videos) {
             showDownloadOptions(video.title, video.duration, video.thumbnail, video.url, video.id, video.uploader);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
-        resultsContainer.appendChild(card);
+        cards.appendChild(card);
     });
+    resultsContainer.appendChild(cards);
 }
 
 function showDownloadOptions(title, duration, thumbnail, url, videoId, uploader) {

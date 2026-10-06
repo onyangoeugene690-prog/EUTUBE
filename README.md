@@ -18,7 +18,8 @@ To run the full version (with downloading capability), you need:
 
 The downloader accepts a YouTube URL or a search term, then provides MP4 and MP3 downloads for the selected result. Use it only for content you own or are authorized to download.
 
-Video discovery and search follow YouTube's continuation pages and return up to 100 results per category or query.
+Video discovery and search follow YouTube's continuation pages and can return up to 500 results per category or query, subject to YouTube availability and the search time limit.
+Downloads use concurrent fragment fetching and chunked HTTP transfers where supported; actual speed depends on the connection and YouTube's delivery.
 
 ## How to Run
 1. Open a terminal/command prompt in this folder.
