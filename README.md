@@ -18,6 +18,8 @@ To run the full version (with downloading capability), you need:
 
 The downloader accepts a YouTube URL or a search term, then provides MP4 and MP3 downloads for the selected result. Use it only for content you own or are authorized to download.
 
+Video discovery and search follow YouTube's continuation pages and return up to 100 results per category or query.
+
 ## How to Run
 1. Open a terminal/command prompt in this folder.
 2. Run the server:

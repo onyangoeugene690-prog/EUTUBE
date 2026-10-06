@@ -233,7 +233,7 @@ async function fetchCategoryVideos(category) {
 
     status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching videos from YouTube...';
     status.style.color = '#555';
-    resultsContainer.innerHTML = '';
+    showVideoLoadingSkeletons(resultsContainer);
 
     try {
         const data = await fetchApi('/api/trending', { category });
@@ -243,10 +243,12 @@ async function fetchCategoryVideos(category) {
             status.style.color = '#00c853';
             renderVideoGrid(data.results);
         } else {
+            resultsContainer.innerHTML = '';
             status.innerText = 'No videos found.';
             status.style.color = '#555';
         }
     } catch (error) {
+        resultsContainer.innerHTML = '';
         status.innerText = getApiErrorMessage(error);
         status.style.color = 'red';
         console.error(error);
@@ -269,7 +271,7 @@ async function performSearch() {
     status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching YouTube...';
     status.style.color = '#555';
     info.classList.add('hidden');
-    resultsContainer.innerHTML = '';
+    showVideoLoadingSkeletons(resultsContainer);
 
     try {
         const data = await fetchApi('/api/info', { url: query });
@@ -281,15 +283,29 @@ async function performSearch() {
 
             renderVideoGrid(data.results || []);
         } else {
+            resultsContainer.innerHTML = '';
             status.innerText = 'Video found!';
             status.style.color = '#00c853';
             showDownloadOptions(data.title, data.duration, data.thumbnail, data.url, data.id, data.uploader);
         }
     } catch (error) {
+        resultsContainer.innerHTML = '';
         status.innerText = getApiErrorMessage(error);
         status.style.color = 'red';
         console.error(error);
     }
+}
+
+function showVideoLoadingSkeletons(container) {
+    container.innerHTML = Array.from({ length: 8 }, () => `
+        <div class="video-card video-card-skeleton" aria-hidden="true">
+            <div class="skeleton-thumb"></div>
+            <div class="skeleton-details">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line short"></div>
+            </div>
+        </div>
+    `).join('');
 }
 
 function renderVideoGrid(videos) {

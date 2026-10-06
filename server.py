@@ -13,6 +13,9 @@ import imageio_ffmpeg
 app = Flask(__name__, static_folder='.', static_url_path='')
 
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+MAX_SEARCH_RESULTS = 100
+SEARCH_TIMEOUT_SECONDS = 8
+SEARCH_REQUEST_TIMEOUT_SECONDS = 4
 
 # In-memory TTL Cache
 CACHE = {}
@@ -62,7 +65,7 @@ def extract_video_id(url):
             return match.group(1)
     return None
 
-def fast_youtube_search(query, max_results=50):
+def fast_youtube_search(query, max_results=MAX_SEARCH_RESULTS):
     cached = get_from_cache(f"search:{query.lower()}:{max_results}")
     if cached:
         return cached
@@ -120,11 +123,14 @@ def fast_youtube_search(query, max_results=50):
 
     try:
         cont_token = None
-        for page in range(2):
-            if len(results) >= max_results:
-                break
+        seen_continuation_tokens = set()
+        search_deadline = time.monotonic() + SEARCH_TIMEOUT_SECONDS
+        while len(results) < max_results and time.monotonic() < search_deadline:
             req_payload = {'context': {'client': {'clientName': 'WEB', 'clientVersion': '2.20260101.00.00'}}}
             if cont_token:
+                if cont_token in seen_continuation_tokens:
+                    break
+                seen_continuation_tokens.add(cont_token)
                 req_payload['continuation'] = cont_token
             else:
                 req_payload['query'] = query
@@ -134,7 +140,11 @@ def fast_youtube_search(query, max_results=50):
                 data=json.dumps(req_payload).encode('utf-8'),
                 headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             )
-            res = json.loads(urllib.request.urlopen(req, timeout=8).read())
+            request_timeout = min(
+                SEARCH_REQUEST_TIMEOUT_SECONDS,
+                max(0.1, search_deadline - time.monotonic())
+            )
+            res = json.loads(urllib.request.urlopen(req, timeout=request_timeout).read())
             extract_videos(res)
             cont_token = find_continuation_token(res)
             if not cont_token:
@@ -145,11 +155,14 @@ def fast_youtube_search(query, max_results=50):
             return results
     except Exception as e:
         print(f"InnerTube search failed for '{query}': {e}")
+        if results:
+            set_in_cache(f"search:{query.lower()}:{max_results}", results)
+            return results
 
     # Fallback to yt_dlp
     return fallback_yt_dlp_search(query, max_results)
 
-def fallback_yt_dlp_search(query, max_results=30):
+def fallback_yt_dlp_search(query, max_results=MAX_SEARCH_RESULTS):
     ydl_opts = {
         'default_search': 'ytsearch',
         'noplaylist': True,
@@ -157,7 +170,10 @@ def fallback_yt_dlp_search(query, max_results=30):
         'no_warnings': True,
         'no_color': True,
         'extract_flat': True,
-        'skip_download': True
+        'skip_download': True,
+        'socket_timeout': SEARCH_REQUEST_TIMEOUT_SECONDS,
+        'retries': 1,
+        'extractor_retries': 1
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -220,7 +236,7 @@ def fast_oembed_info(url):
 @app.route('/api/trending')
 def trending():
     category = request.args.get('category', 'trending')
-    results = fast_youtube_search(category, max_results=50)
+    results = fast_youtube_search(category, max_results=MAX_SEARCH_RESULTS)
     return jsonify({"results": results})
 
 @app.route('/api/info')
@@ -234,7 +250,7 @@ def get_info():
     is_search = False if v_id else not (url.startswith('http://') or url.startswith('https://') or 'youtube.com' in url or 'youtu.be' in url)
 
     if is_search:
-        results = fast_youtube_search(url, max_results=50)
+        results = fast_youtube_search(url, max_results=MAX_SEARCH_RESULTS)
         return jsonify({"is_search": True, "results": results})
     else:
         target_url = f"https://www.youtube.com/watch?v={v_id}" if v_id else url
@@ -797,7 +813,7 @@ def prewarm_cache():
     categories = ['trending', 'music', 'gaming', 'news', 'tech']
     for cat in categories:
         try:
-            fast_youtube_search(cat, max_results=50)
+            fast_youtube_search(cat, max_results=MAX_SEARCH_RESULTS)
         except Exception:
             pass
 

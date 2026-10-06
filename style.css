@@ -1,5 +1,5 @@
 /* ==========================================================================
-   EuTube Ultra HD 8K Sharp Typography & Modern Styling
+   EuTube Ultra HD 8K Silvery Metal Typography & Modern Styling
    ========================================================================== */
 
 :root {
@@ -17,11 +17,10 @@
     --primary-hover: #00a844;
     --primary-glow: rgba(0, 200, 83, 0.25);
 
-    --border-sharp: #cbd5e1;   /* Slate 300 for crisp 8K definition */
+    --border-sharp: #cbd5e1;   /* Slate 300 */
     --border-light: #e2e8f0;   /* Slate 200 */
 
     --shadow-8k: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04);
-    --shadow-card: 0 4px 12px rgba(15, 23, 42, 0.05);
 }
 
 html {
@@ -67,36 +66,52 @@ header {
 
 header h1 {
     font-family: var(--font-heading);
-    color: var(--primary-brand);
-    font-size: 3rem;
-    font-weight: 800;
+    font-size: 3.2rem;
+    font-weight: 900;
     margin: 0 0 0.6rem 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 14px;
-    letter-spacing: -0.03em;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    gap: 16px;
+    letter-spacing: -0.035em;
+}
+
+/* ==========================================================================
+   8K Silvery Metal Chrome Logo Text & Badge
+   ========================================================================== */
+
+.logo-text {
+    color: #d32f2f;
+    -webkit-text-fill-color: #d32f2f;
+    -webkit-text-stroke: 1px #00c853;
+    text-shadow: none;
+    filter: none;
+    display: inline-block;
+    position: relative;
 }
 
 .logo-mark {
-    width: 0.82em;
-    height: 0.82em;
+    width: 0.85em;
+    height: 0.85em;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
     border-radius: 50%;
-    background-color: var(--primary-brand);
-    color: #ffffff;
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
+    border: 2px solid #00c853;
+    color: #fff;
     font-size: inherit;
-    transform: translateY(0.06em);
-    box-shadow: 0 4px 12px var(--primary-glow);
+    transform: translateY(0.04em);
+    box-shadow: none;
 }
 
 .logo-mark i {
     font-size: 0.44em;
     transform: translateX(0.06em);
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    text-shadow: none;
 }
 
 header p {
@@ -133,8 +148,8 @@ header p {
 }
 
 #video-url:focus {
-    border-color: var(--primary-brand);
-    box-shadow: 0 0 0 4px var(--primary-glow);
+    border-color: #3b82f6;
+    box-shadow: none;
 }
 
 #download-btn {
@@ -257,6 +272,44 @@ header p {
     transform: translateY(-5px);
     border-color: var(--border-sharp);
     box-shadow: 0 12px 24px -4px rgba(15, 23, 42, 0.12);
+}
+
+.video-card-skeleton {
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.skeleton-thumb,
+.skeleton-line {
+    background: linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%);
+    background-size: 200% 100%;
+    animation: video-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+}
+
+.skeleton-details {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+}
+
+.skeleton-line {
+    height: 14px;
+    border-radius: 7px;
+}
+
+.skeleton-line.short {
+    width: 60%;
+}
+
+@keyframes video-skeleton-pulse {
+    to {
+        background-position: -200% 0;
+    }
 }
 
 .thumb-container {
@@ -572,7 +625,7 @@ header p {
 footer {
     margin-top: 3.5rem;
     padding: 1.8rem 1.2rem;
-    background-color: #0f172a; /* Sharp Ultra Dark Slate Navy */
+    background-color: #0f172a;
     color: #ffffff;
     text-align: center;
     font-size: 0.95rem;
@@ -590,97 +643,9 @@ footer p {
     letter-spacing: 0.02em;
 }
 
-/* ==========================================================================
-   Responsive & High DPI Ultra HD / 8K Display Tuning
-   ========================================================================== */
-
-@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-    body {
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-    }
-}
-
 @media (max-width: 700px) {
-    body {
-        padding: 12px 0;
-    }
-
-    .container {
-        width: 95%;
-        padding: 1.4rem 1.1rem 1.6rem;
-        border-radius: 14px;
-    }
-
-    header {
-        margin-bottom: 1.5rem;
-    }
-
     header h1 {
         font-size: 2.2rem;
         gap: 10px;
-    }
-
-    header p {
-        font-size: 0.95rem;
-        line-height: 1.5;
-    }
-
-    .search-box {
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    #video-url,
-    #download-btn,
-    .primary-download-btn,
-    .format-dropdown {
-        width: 100%;
-    }
-
-    #download-btn,
-    .primary-download-btn {
-        justify-content: center;
-    }
-
-    .category-tags {
-        justify-content: flex-start;
-        gap: 8px;
-    }
-
-    .tag-btn {
-        padding: 8px 14px;
-        font-size: 0.85rem;
-    }
-
-    .video-info {
-        padding: 1.1rem;
-    }
-
-    .details h3 {
-        font-size: 1.2rem;
-    }
-
-    .format-controls {
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    .opt-btn {
-        width: 100%;
-        justify-content: center;
-    }
-
-    .search-results.grid-view {
-        grid-template-columns: 1fr;
-        gap: 18px;
-    }
-
-    footer {
-        margin-left: -1.1rem;
-        margin-right: -1.1rem;
-        margin-bottom: -1.6rem;
-        border-radius: 0 0 14px 14px;
-        font-size: 0.85rem;
     }
 }
