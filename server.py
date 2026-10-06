@@ -10,7 +10,7 @@ import time
 import threading
 import imageio_ffmpeg
 
-app = Flask(__name__, static_folder='.')
+app = Flask(__name__, static_folder='.', static_url_path='')
 
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
 
@@ -28,12 +28,18 @@ def get_from_cache(key):
 def set_in_cache(key, data):
     CACHE[key] = (data, time.time())
 
+def clean_error_message(err):
+    msg = str(err)
+    # Remove ANSI terminal escape codes
+    clean_msg = re.sub(r'\x1b\[[0-9;]*m', '', msg).strip()
+    return clean_msg
+
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Range')
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-    response.headers.add('Access-Control-Expose-Headers', 'Content-Disposition')
+    response.headers.add('Access-Control-Expose-Headers', 'Content-Disposition,Content-Range,Content-Length,Accept-Ranges')
     return response
 
 @app.route('/')
@@ -41,10 +47,14 @@ def index():
     return app.send_static_file('index.html')
 
 def extract_video_id(url):
+    if not url:
+        return None
+    url = url.strip()
+    if re.fullmatch(r'[0-9A-Za-z_-]{11}', url):
+        return url
     patterns = [
-        r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
-        r'youtu\.be\/([0-9A-Za-z_-]{11})',
-        r'embed\/([0-9A-Za-z_-]{11})'
+        r'(?:v=|\/v\/|\/embed\/|\/shorts\/|\/live\/|youtu\.be\/)([0-9A-Za-z_-]{11})',
+        r'select_pm_video\?v=([0-9A-Za-z_-]{11})'
     ]
     for pattern in patterns:
         match = re.search(pattern, url)
@@ -113,7 +123,7 @@ def fast_youtube_search(query, max_results=50):
         for page in range(2):
             if len(results) >= max_results:
                 break
-            req_payload = {'context': {'client': {'clientName': 'WEB', 'clientVersion': '2.20240101.00.00'}}}
+            req_payload = {'context': {'client': {'clientName': 'WEB', 'clientVersion': '2.20260101.00.00'}}}
             if cont_token:
                 req_payload['continuation'] = cont_token
             else:
@@ -122,7 +132,7 @@ def fast_youtube_search(query, max_results=50):
             req = urllib.request.Request(
                 url,
                 data=json.dumps(req_payload).encode('utf-8'),
-                headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+                headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             )
             res = json.loads(urllib.request.urlopen(req, timeout=8).read())
             extract_videos(res)
@@ -145,29 +155,37 @@ def fallback_yt_dlp_search(query, max_results=30):
         'noplaylist': True,
         'quiet': True,
         'no_warnings': True,
+        'no_color': True,
         'extract_flat': True,
         'skip_download': True
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        search_results = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
-        entries = search_results.get('entries', [])
-        results = []
-        for entry in entries:
-            if entry:
-                v_id = entry.get('id')
-                thumbs = entry.get('thumbnails', [])
-                thumb = entry.get('thumbnail') or (thumbs[-1].get('url') if thumbs else f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg")
-                results.append({
-                    'id': v_id,
-                    'title': entry.get('title', 'Unknown Title'),
-                    'thumbnail': thumb,
-                    'duration': entry.get('duration_string') or 'N/A',
-                    'uploader': entry.get('uploader') or entry.get('channel') or 'YouTube Channel',
-                    'views': f"{entry.get('view_count'):,}" if entry.get('view_count') else '',
-                    'url': entry.get('webpage_url') or f"https://www.youtube.com/watch?v={v_id}"
-                })
-        set_in_cache(f"search:{query.lower()}:{max_results}", results)
-        return results
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            search_results = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
+            entries = search_results.get('entries', []) if search_results else []
+            results = []
+            for entry in entries:
+                if entry:
+                    v_id = entry.get('id')
+                    if not v_id:
+                        continue
+                    thumbs = entry.get('thumbnails', [])
+                    thumb = entry.get('thumbnail') or (thumbs[-1].get('url') if thumbs else f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg")
+                    results.append({
+                        'id': v_id,
+                        'title': entry.get('title', 'Unknown Title'),
+                        'thumbnail': thumb,
+                        'duration': entry.get('duration_string') or 'N/A',
+                        'uploader': entry.get('uploader') or entry.get('channel') or 'YouTube Channel',
+                        'views': f"{entry.get('view_count'):,}" if entry.get('view_count') else '',
+                        'url': entry.get('webpage_url') or f"https://www.youtube.com/watch?v={v_id}"
+                    })
+            if results:
+                set_in_cache(f"search:{query.lower()}:{max_results}", results)
+            return results
+    except Exception as e:
+        print(f"Fallback yt_dlp search failed for '{query}': {e}")
+        return []
 
 def fast_oembed_info(url):
     v_id = extract_video_id(url)
@@ -180,8 +198,8 @@ def fast_oembed_info(url):
 
     try:
         oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={v_id}&format=json"
-        req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0'})
-        res = json.loads(urllib.request.urlopen(req, timeout=4).read())
+        req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        res = json.loads(urllib.request.urlopen(req, timeout=5).read())
 
         info = {
             'is_search': False,
@@ -211,36 +229,39 @@ def get_info():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    is_search = not (url.startswith('http://') or url.startswith('https://') or 'youtube.com' in url or 'youtu.be' in url)
+    url = url.strip()
+    v_id = extract_video_id(url)
+    is_search = False if v_id else not (url.startswith('http://') or url.startswith('https://') or 'youtube.com' in url or 'youtu.be' in url)
 
     if is_search:
         results = fast_youtube_search(url, max_results=50)
         return jsonify({"is_search": True, "results": results})
     else:
-        info = fast_oembed_info(url)
+        target_url = f"https://www.youtube.com/watch?v={v_id}" if v_id else url
+        info = fast_oembed_info(target_url)
         if info:
             return jsonify(info)
 
         try:
-            ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'extract_flat': True}
+            ydl_opts = {'quiet': True, 'no_warnings': True, 'no_color': True, 'skip_download': True, 'extract_flat': True}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                raw_info = ydl.extract_info(url, download=False)
-                v_id = raw_info.get('id') or extract_video_id(url)
+                raw_info = ydl.extract_info(target_url, download=False)
+                extracted_id = raw_info.get('id') or v_id or extract_video_id(target_url)
                 info = {
                     'is_search': False,
-                    'id': v_id,
+                    'id': extracted_id,
                     'title': raw_info.get('title', 'YouTube Video'),
-                    'thumbnail': raw_info.get('thumbnail') or f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg",
+                    'thumbnail': raw_info.get('thumbnail') or (f"https://i.ytimg.com/vi/{extracted_id}/hqdefault.jpg" if extracted_id else ""),
                     'duration': raw_info.get('duration_string') or 'N/A',
-                    'uploader': raw_info.get('uploader') or 'YouTube Channel',
-                    'views': '',
-                    'url': raw_info.get('webpage_url') or url
+                    'uploader': raw_info.get('uploader') or raw_info.get('channel') or 'YouTube Channel',
+                    'views': f"{raw_info.get('view_count'):,}" if raw_info.get('view_count') else '',
+                    'url': raw_info.get('webpage_url') or target_url
                 }
-                if v_id:
-                    set_in_cache(f"info:{v_id}", info)
+                if extracted_id:
+                    set_in_cache(f"info:{extracted_id}", info)
                 return jsonify(info)
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": clean_error_message(e)}), 500
 
 @app.route('/api/stream')
 def stream():
@@ -248,57 +269,94 @@ def stream():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    cached = get_from_cache(f"stream:{url}")
+    url = url.strip()
+    v_id = extract_video_id(url)
+    target_url = f"https://www.youtube.com/watch?v={v_id}" if v_id else url
+
+    cached = get_from_cache(f"stream:{target_url}")
     if cached:
         return jsonify(cached)
 
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
+        'no_color': True,
         'ffmpeg_location': FFMPEG_EXE,
-        'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'mweb', 'web']}}
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(target_url, download=False)
             formats = info.get('formats', [])
 
-            playable_formats = [
+            # 1. Look for combined video + audio
+            combined_formats = [
                 f for f in formats
                 if f.get('vcodec') not in (None, 'none')
                 and f.get('acodec') not in (None, 'none')
                 and f.get('url')
             ]
-            compatible_formats = [
-                f for f in playable_formats
-                if f.get('ext') == 'mp4'
-                and f.get('vcodec', '').startswith('avc1')
-                and f.get('acodec', '').startswith('mp4a')
-            ]
-            candidate_formats = compatible_formats or playable_formats
-            best_format = max(
-                candidate_formats,
-                key=lambda f: (f.get('height') or 0, f.get('tbr') or 0, f.get('fps') or 0),
-                default=None
-            )
-            stream_url = best_format.get('url') if best_format else None
 
-            if not stream_url:
-                stream_url = info.get('url')
+            # 2. Look for best video stream
+            video_formats = [
+                f for f in formats
+                if f.get('vcodec') not in (None, 'none')
+                and f.get('url')
+            ]
+            video_formats.sort(key=lambda f: (f.get('height') or 0, f.get('tbr') or 0, f.get('fps') or 0), reverse=True)
+
+            best_format = combined_formats[0] if combined_formats else (video_formats[0] if video_formats else None)
+            stream_url = best_format.get('url') if best_format else info.get('url')
 
             if stream_url:
+                proxy_url = f"/api/proxy_stream?url={urllib.parse.quote(stream_url)}"
                 data = {
                     'stream_url': stream_url,
+                    'proxy_url': proxy_url,
                     'title': info.get('title'),
-                    'id': info.get('id') or extract_video_id(url)
+                    'id': info.get('id') or v_id
                 }
-                set_in_cache(f"stream:{url}", data)
+                set_in_cache(f"stream:{target_url}", data)
                 return jsonify(data)
             else:
                 return jsonify({"error": "No streamable format found for this video"}), 404
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": clean_error_message(e)}), 500
+
+@app.route('/api/proxy_stream')
+def proxy_stream():
+    target_url = request.args.get('url')
+    if not target_url:
+        return jsonify({"error": "No stream URL provided"}), 400
+
+    range_header = request.headers.get('Range')
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    }
+    if range_header:
+        headers['Range'] = range_header
+
+    try:
+        req = urllib.request.Request(target_url, headers=headers)
+        upstream = urllib.request.urlopen(req, timeout=10)
+
+        status_code = upstream.status
+        res_headers = {}
+        for h in ['Content-Type', 'Content-Length', 'Accept-Ranges', 'Content-Range']:
+            val = upstream.headers.get(h)
+            if val:
+                res_headers[h] = val
+
+        def generate():
+            while True:
+                chunk = upstream.read(64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+
+        return app.response_class(generate(), status=status_code, headers=res_headers)
+    except Exception as e:
+        return jsonify({"error": clean_error_message(e)}), 500
 
 @app.route('/api/formats')
 def get_formats():
@@ -306,16 +364,20 @@ def get_formats():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
+    url = url.strip()
+    v_id = extract_video_id(url)
+    target_url = f"https://www.youtube.com/watch?v={v_id}" if v_id else url
+
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
+        'no_color': True,
         'ffmpeg_location': FFMPEG_EXE,
-        'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web']}}
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(target_url, download=False)
             raw_formats = info.get('formats', [])
             duration = info.get('duration')
 
@@ -471,7 +533,7 @@ def get_formats():
                 ]
             })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": clean_error_message(e)}), 500
 
 @app.route('/api/download')
 def download():
@@ -481,6 +543,10 @@ def download():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
+    url = url.strip()
+    v_id = extract_video_id(url)
+    target_url = f"https://www.youtube.com/watch?v={v_id}" if v_id else url
+
     download_dir = tempfile.mkdtemp(prefix='eutube-')
 
     ydl_opts = {
@@ -488,8 +554,8 @@ def download():
         'noplaylist': True,
         'quiet': True,
         'no_warnings': True,
+        'no_color': True,
         'ffmpeg_location': FFMPEG_EXE,
-        'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web']}}
     }
 
     mimetype = 'video/mp4'
@@ -661,7 +727,7 @@ def download():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(target_url, download=True)
             prep_filename = ydl.prepare_filename(info)
 
         actual_filename = None
@@ -725,7 +791,7 @@ def download():
         )
     except Exception as error:
         shutil.rmtree(download_dir, ignore_errors=True)
-        return jsonify({"error": str(error)}), 500
+        return jsonify({"error": clean_error_message(error)}), 500
 
 def prewarm_cache():
     categories = ['trending', 'music', 'gaming', 'news', 'tech']

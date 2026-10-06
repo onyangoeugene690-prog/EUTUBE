@@ -6,11 +6,42 @@ let currentPlayerMode = 'embed';
 const configuredApiBase = document.querySelector('meta[name="api-base"]')?.content.trim();
 const isLocalFrontend = window.location.protocol === 'file:'
     || ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const API_BASE = configuredApiBase || (isLocalFrontend ? 'http://localhost:5000' : '');
+const API_BASE = (configuredApiBase || (isLocalFrontend ? 'http://localhost:5000' : '')).replace(/\/+$/, '');
+
+async function fetchApi(path, params = {}) {
+    const url = new URL(`${API_BASE}${path}`, window.location.href);
+    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+
+    const response = await fetch(url);
+    let data;
+    try {
+        data = await response.json();
+    } catch {
+        throw new Error(`The video server returned an invalid response (HTTP ${response.status}).`);
+    }
+
+    if (!response.ok || data.error) {
+        throw new Error(data.error || `The video server returned HTTP ${response.status}.`);
+    }
+
+    return data;
+}
+
+function getApiErrorMessage(error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (detail.toLowerCase().includes('failed to fetch') || detail.toLowerCase().includes('networkerror')) {
+        return `Could not connect to video server at ${API_BASE}. Please make sure start_server.cmd is running.`;
+    }
+    return `Error from video server: ${detail}`;
+}
 
 function extractVideoId(url) {
     if (!url) return null;
-    const match = url.match(/(?:v=|\/|embed\/|shorts\/|youtu\.be\/)([0-9A-Za-z_-]{11})/);
+    const clean = url.trim();
+    if (/^[0-9A-Za-z_-]{11}$/.test(clean)) {
+        return clean;
+    }
+    const match = clean.match(/(?:v=|\/v\/|\/embed\/|\/shorts\/|\/live\/|youtu\.be\/)([0-9A-Za-z_-]{11})/);
     return match ? match[1] : null;
 }
 
@@ -137,31 +168,28 @@ async function loadAvailableFormats(url) {
     if (!select || !url) return;
 
     try {
-        const response = await fetch(`${API_BASE}/api/formats?url=${encodeURIComponent(url)}`);
-        const data = await response.json();
+        const data = await fetchApi('/api/formats', { url });
 
-        if (response.ok) {
-            if (data.groups && data.groups.length) {
-                let html = '';
-                data.groups.forEach(g => {
-                    if (g.formats && g.formats.length) {
-                        html += `<optgroup label="${g.group}">`;
-                        g.formats.forEach(f => {
-                            html += `<option value="${f.id}">${f.label}</option>`;
-                        });
-                        html += `</optgroup>`;
-                    }
-                });
-                select.innerHTML = html;
-                selectPreferredFormat(select);
-                return;
-            } else if (data.formats && data.formats.length) {
-                select.innerHTML = data.formats
-                    .map(format => `<option value="${format.id}">${format.label}</option>`)
-                    .join('');
-                selectPreferredFormat(select);
-                return;
-            }
+        if (data.groups && data.groups.length) {
+            let html = '';
+            data.groups.forEach(g => {
+                if (g.formats && g.formats.length) {
+                    html += `<optgroup label="${g.group}">`;
+                    g.formats.forEach(f => {
+                        html += `<option value="${f.id}">${f.label}</option>`;
+                    });
+                    html += `</optgroup>`;
+                }
+            });
+            select.innerHTML = html;
+            selectPreferredFormat(select);
+            return;
+        } else if (data.formats && data.formats.length) {
+            select.innerHTML = data.formats
+                .map(format => `<option value="${format.id}">${format.label}</option>`)
+                .join('');
+            selectPreferredFormat(select);
+            return;
         }
     } catch (error) {
         console.warn('Failed to load all formats from server:', error);
@@ -208,13 +236,9 @@ async function fetchCategoryVideos(category) {
     resultsContainer.innerHTML = '';
 
     try {
-        const response = await fetch(`${API_BASE}/api/trending?category=${encodeURIComponent(category)}`);
-        const data = await response.json();
+        const data = await fetchApi('/api/trending', { category });
 
-        if (data.error) {
-            status.innerText = 'Error: ' + data.error;
-            status.style.color = 'red';
-        } else if (data.results && data.results.length > 0) {
+        if (data.results && data.results.length > 0) {
             status.innerText = `Fetched ${data.results.length} videos from YouTube`;
             status.style.color = '#00c853';
             renderVideoGrid(data.results);
@@ -223,7 +247,7 @@ async function fetchCategoryVideos(category) {
             status.style.color = '#555';
         }
     } catch (error) {
-        status.innerText = 'Failed to connect to server. Make sure server.py is running on http://localhost:5000';
+        status.innerText = getApiErrorMessage(error);
         status.style.color = 'red';
         console.error(error);
     }
@@ -248,25 +272,21 @@ async function performSearch() {
     resultsContainer.innerHTML = '';
 
     try {
-        const response = await fetch(`${API_BASE}/api/info?url=${encodeURIComponent(query)}`);
-        const data = await response.json();
+        const data = await fetchApi('/api/info', { url: query });
 
-        if (data.error) {
-            status.innerText = 'Error: ' + data.error;
-            status.style.color = 'red';
-        } else if (data.is_search) {
+        if (data.is_search) {
             resultsHeading.innerHTML = `<i class="fas fa-search"></i> Search Results for "${query}"`;
-            status.innerText = `Found ${data.results.length} results from YouTube. Select a video to view or download:`;
+            status.innerText = `Found ${data.results ? data.results.length : 0} results from YouTube. Select a video to view or download:`;
             status.style.color = '#00c853';
 
-            renderVideoGrid(data.results);
+            renderVideoGrid(data.results || []);
         } else {
             status.innerText = 'Video found!';
             status.style.color = '#00c853';
             showDownloadOptions(data.title, data.duration, data.thumbnail, data.url, data.id, data.uploader);
         }
     } catch (error) {
-        status.innerText = 'Failed to connect to server. Make sure server.py is running on http://localhost:5000';
+        status.innerText = getApiErrorMessage(error);
         status.style.color = 'red';
         console.error(error);
     }
@@ -275,6 +295,11 @@ async function performSearch() {
 function renderVideoGrid(videos) {
     const resultsContainer = document.getElementById('search-results');
     resultsContainer.innerHTML = '';
+
+    if (!videos || !videos.length) {
+        resultsContainer.innerHTML = '<p class="no-results">No videos found matching your search.</p>';
+        return;
+    }
 
     videos.forEach(video => {
         const card = document.createElement('div');
@@ -322,7 +347,7 @@ function showDownloadOptions(title, duration, thumbnail, url, videoId, uploader)
         if (playerWrapper) playerWrapper.style.display = 'none';
     }
 
-    loadAvailableFormats(selectedVideoUrl);
+    loadAvailableFormats(selectedVideoUrl || (currentVideoId ? `https://www.youtube.com/watch?v=${currentVideoId}` : ''));
 
     document.getElementById('video-info').classList.remove('hidden');
     document.getElementById('status').innerText = 'Video loaded! Stream above or choose a format to download below:';
@@ -373,28 +398,36 @@ async function switchPlayerMode(mode) {
                 const targetUrl = selectedVideoUrl || (vId ? `https://www.youtube.com/watch?v=${vId}` : '');
                 if (!targetUrl) throw new Error('No valid URL for direct stream');
 
-                const response = await fetch(`${API_BASE}/api/stream?url=${encodeURIComponent(targetUrl)}`);
-                const data = await response.json();
+                const data = await fetchApi('/api/stream', { url: targetUrl });
 
-                if (response.ok && data.stream_url) {
+                if (data.proxy_url || data.stream_url) {
+                    const primarySrc = data.proxy_url ? `${API_BASE}${data.proxy_url}` : data.stream_url;
+
                     html5Player.onerror = () => {
-                        status.innerText = 'This stream could not be played by your browser. Try YouTube Player or Watch on YouTube.';
-                        status.style.color = 'red';
+                        if (html5Player.src !== data.stream_url && data.stream_url) {
+                            console.warn('Proxy stream error, falling back to direct stream_url');
+                            html5Player.src = data.stream_url;
+                            html5Player.play().catch(e => console.warn('Direct stream playback prevented:', e));
+                        } else {
+                            status.innerText = 'Direct playback failed. Please use YouTube Player or Watch on YouTube.';
+                            status.style.color = 'red';
+                        }
                     };
                     html5Player.onplaying = () => {
                         status.innerText = 'Streaming directly via HTML5 Video Player.';
                         status.style.color = '#00c853';
                     };
-                    html5Player.src = data.stream_url;
+
+                    html5Player.src = primarySrc;
                     html5Player.play().catch(e => console.warn('Autoplay prevented by browser policy:', e));
                     status.innerText = 'Stream loaded. Press play if playback does not start automatically.';
                     status.style.color = '#0066cc';
                 } else {
-                    status.innerText = 'Direct stream unavailable: ' + (data.error || 'Could not retrieve direct link');
+                    status.innerText = 'Direct stream unavailable: Could not retrieve stream link.';
                     status.style.color = 'red';
                 }
             } catch (err) {
-                status.innerText = 'Failed to load direct stream. You can watch directly on YouTube using the button above.';
+                status.innerText = getApiErrorMessage(err);
                 status.style.color = 'red';
                 console.error(err);
             }
