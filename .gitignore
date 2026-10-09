@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+.idea/
+tunnel.txt
+tunnel_err.txt

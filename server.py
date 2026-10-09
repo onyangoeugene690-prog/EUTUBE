@@ -9,11 +9,14 @@ import re
 import time
 import threading
 import imageio_ffmpeg
+import mimetypes
+
+mimetypes.add_type('application/javascript', '.jsx')
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
-MAX_SEARCH_RESULTS = 500
+SEARCH_PAGE_SIZE = 50
 SEARCH_TIMEOUT_SECONDS = 8
 SEARCH_REQUEST_TIMEOUT_SECONDS = 4
 
@@ -45,9 +48,30 @@ def after_request(response):
     response.headers.add('Access-Control-Expose-Headers', 'Content-Disposition,Content-Range,Content-Length,Accept-Ranges')
     return response
 
+INDEX_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="api-base" content="">
+    <title>EuTube</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" src="App.jsx"></script>
+</body>
+</html>"""
+
 @app.route('/')
 def index():
-    return app.send_static_file('index.html')
+    return INDEX_HTML
 
 def extract_video_id(url):
     if not url:
@@ -65,8 +89,9 @@ def extract_video_id(url):
             return match.group(1)
     return None
 
-def fast_youtube_search(query, max_results=MAX_SEARCH_RESULTS):
-    cached = get_from_cache(f"search:{query.lower()}:{max_results}")
+def fast_youtube_search(query, continuation_token=None, max_results=SEARCH_PAGE_SIZE):
+    cache_suffix = continuation_token or 'first'
+    cached = get_from_cache(f"search:{query.lower()}:{cache_suffix}:{max_results}")
     if cached:
         return cached
 
@@ -122,16 +147,12 @@ def fast_youtube_search(query, max_results=MAX_SEARCH_RESULTS):
         return tokens[0] if tokens else None
 
     try:
-        cont_token = None
-        seen_continuation_tokens = set()
         search_deadline = time.monotonic() + SEARCH_TIMEOUT_SECONDS
-        while len(results) < max_results and time.monotonic() < search_deadline:
+        next_token = None
+        if time.monotonic() < search_deadline:
             req_payload = {'context': {'client': {'clientName': 'WEB', 'clientVersion': '2.20260101.00.00'}}}
-            if cont_token:
-                if cont_token in seen_continuation_tokens:
-                    break
-                seen_continuation_tokens.add(cont_token)
-                req_payload['continuation'] = cont_token
+            if continuation_token:
+                req_payload['continuation'] = continuation_token
             else:
                 req_payload['query'] = query
 
@@ -146,23 +167,24 @@ def fast_youtube_search(query, max_results=MAX_SEARCH_RESULTS):
             )
             res = json.loads(urllib.request.urlopen(req, timeout=request_timeout).read())
             extract_videos(res)
-            cont_token = find_continuation_token(res)
-            if not cont_token:
-                break
+            next_token = find_continuation_token(res)
 
-        if results:
-            set_in_cache(f"search:{query.lower()}:{max_results}", results)
-            return results
+        if results or continuation_token:
+            page = {'results': results, 'continuation': next_token if results else None}
+            set_in_cache(f"search:{query.lower()}:{cache_suffix}:{max_results}", page)
+            return page
     except Exception as e:
         print(f"InnerTube search failed for '{query}': {e}")
-        if results:
-            set_in_cache(f"search:{query.lower()}:{max_results}", results)
-            return results
+        if results or continuation_token:
+            page = {'results': results, 'continuation': None}
+            set_in_cache(f"search:{query.lower()}:{cache_suffix}:{max_results}", page)
+            return page
 
     # Fallback to yt_dlp
-    return fallback_yt_dlp_search(query, max_results)
+    fallback_results = fallback_yt_dlp_search(query, max_results)
+    return {'results': fallback_results, 'continuation': None}
 
-def fallback_yt_dlp_search(query, max_results=MAX_SEARCH_RESULTS):
+def fallback_yt_dlp_search(query, max_results=SEARCH_PAGE_SIZE):
     ydl_opts = {
         'default_search': 'ytsearch',
         'noplaylist': True,
@@ -236,8 +258,9 @@ def fast_oembed_info(url):
 @app.route('/api/trending')
 def trending():
     category = request.args.get('category', 'trending')
-    results = fast_youtube_search(category, max_results=MAX_SEARCH_RESULTS)
-    return jsonify({"results": results})
+    continuation = request.args.get('continuation')
+    page = fast_youtube_search(category, continuation_token=continuation)
+    return jsonify(page)
 
 @app.route('/api/info')
 def get_info():
@@ -250,8 +273,9 @@ def get_info():
     is_search = False if v_id else not (url.startswith('http://') or url.startswith('https://') or 'youtube.com' in url or 'youtu.be' in url)
 
     if is_search:
-        results = fast_youtube_search(url, max_results=MAX_SEARCH_RESULTS)
-        return jsonify({"is_search": True, "results": results})
+        continuation = request.args.get('continuation')
+        page = fast_youtube_search(url, continuation_token=continuation)
+        return jsonify({"is_search": True, **page})
     else:
         target_url = f"https://www.youtube.com/watch?v={v_id}" if v_id else url
         info = fast_oembed_info(target_url)
@@ -815,7 +839,7 @@ def prewarm_cache():
     categories = ['trending', 'music', 'gaming', 'news', 'tech']
     for cat in categories:
         try:
-            fast_youtube_search(cat, max_results=MAX_SEARCH_RESULTS)
+            fast_youtube_search(cat)
         except Exception:
             pass
 

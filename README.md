@@ -18,7 +18,7 @@ To run the full version (with downloading capability), you need:
 
 The downloader accepts a YouTube URL or a search term, then provides MP4 and MP3 downloads for the selected result. Use it only for content you own or are authorized to download.
 
-Video discovery and search follow YouTube's continuation pages and can return up to 500 results per category or query, subject to YouTube availability and the search time limit.
+Video discovery covers trending, music, gaming, news, tech, sports, science, education, movies, comedy, travel, cooking, podcasts, and animals. Discovery and search load incrementally as you scroll, following YouTube's continuation pages; each response can collect up to 50 results, and repeated video IDs are hidden across pages.
 Downloads use concurrent fragment fetching and chunked HTTP transfers where supported; actual speed depends on the connection and YouTube's delivery.
 
 ## How to Run
