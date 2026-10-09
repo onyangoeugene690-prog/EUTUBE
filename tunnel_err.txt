@@ -16,7 +16,5 @@ https://localhost.run/docs/
 ===============================================================================
 
 
-** your connection id is 102.212.11.22:9594, please mention it if you send me a message about an issue. **
+** your connection id is 102.212.11.46:1969, please mention it if you send me a message about an issue. **
 
-Received disconnect from 35.171.254.69 port 22:11: tunnel activity timeout
-Disconnected from 35.171.254.69 port 22

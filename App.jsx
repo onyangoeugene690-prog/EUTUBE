@@ -978,6 +978,7 @@ function VideoPlayerSection({ selectedVideo, onStatusChange }) {
     const [formatFilter, setFormatFilter] = useState('all');
     const [formatGroups, setFormatGroups] = useState(DEFAULT_FORMAT_GROUPS);
     const [selectedFormatId, setSelectedFormatId] = useState('video_2160_mp4');
+    const [directStreamUrl, setDirectStreamUrl] = useState('');
     const videoRef = useRef(null);
 
     const videoId = useMemo(() => {
@@ -1032,6 +1033,7 @@ function VideoPlayerSection({ selectedVideo, onStatusChange }) {
                     if (!isMounted) return;
                     if (data.proxy_url || data.stream_url) {
                         const primarySrc = data.proxy_url ? `${API_BASE}${data.proxy_url}` : data.stream_url;
+                        setDirectStreamUrl(primarySrc);
 
                         if (videoRef.current) {
                             videoRef.current.src = primarySrc;
@@ -1050,16 +1052,6 @@ function VideoPlayerSection({ selectedVideo, onStatusChange }) {
             return () => { isMounted = false; };
         }
     }, [playerMode, selectedVideo, videoId, onStatusChange]);
-
-    if (!selectedVideo) return null;
-
-    const handleVideoError = () => {
-        onStatusChange({ text: 'Direct playback failed. Please use YouTube Player or Watch on YouTube.', color: 'red', loading: false });
-    };
-
-    const handleVideoPlaying = () => {
-        onStatusChange({ text: 'Streaming directly via HTML5 Video Player.', color: '#00c853', loading: false });
-    };
 
     const filterFormatGroups = useMemo(() => {
         if (formatFilter === 'all') return formatGroups;
@@ -1080,6 +1072,16 @@ function VideoPlayerSection({ selectedVideo, onStatusChange }) {
             return g;
         }).filter(Boolean);
     }, [formatGroups, formatFilter]);
+
+    if (!selectedVideo) return null;
+
+    const handleVideoError = () => {
+        onStatusChange({ text: 'Direct playback failed. Please use YouTube Player or Watch on YouTube.', color: 'red', loading: false });
+    };
+
+    const handleVideoPlaying = () => {
+        onStatusChange({ text: 'Streaming directly via HTML5 Video Player.', color: '#00c853', loading: false });
+    };
 
     const processDownload = () => {
         const url = selectedVideo.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '');
@@ -1103,11 +1105,7 @@ function VideoPlayerSection({ selectedVideo, onStatusChange }) {
     };
 
     const embedUrl = videoId
-        ? `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0${
-            (window.location.protocol === 'http:' || window.location.protocol === 'https:')
-                ? `&origin=${encodeURIComponent(window.location.origin)}`
-                : ''
-          }`
+        ? `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`
         : '';
 
     return (
@@ -1115,6 +1113,7 @@ function VideoPlayerSection({ selectedVideo, onStatusChange }) {
             <div className="player-container" id="player-wrapper">
                 {playerMode === 'embed' ? (
                     <iframe
+                        key={videoId}
                         id="video-player"
                         src={embedUrl}
                         allowFullScreen
@@ -1125,7 +1124,11 @@ function VideoPlayerSection({ selectedVideo, onStatusChange }) {
                     <video
                         ref={videoRef}
                         id="html5-player"
+                        src={directStreamUrl}
                         controls
+                        autoPlay
+                        playsInline
+                        preload="metadata"
                         style={{ display: 'block', width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, background: '#000', borderRadius: '10px' }}
                         onError={handleVideoError}
                         onPlaying={handleVideoPlaying}
@@ -1203,6 +1206,13 @@ function VideoPlayerSection({ selectedVideo, onStatusChange }) {
 }
 
 function VideoCard({ video, onSelect }) {
+    const videoId = video.id || extractVideoId(video.url);
+    const watchUrl = video.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '#');
+
+    const handleExternalClick = (e) => {
+        e.stopPropagation();
+    };
+
     return (
         <div className="video-card" onClick={() => onSelect(video)}>
             <div className="thumb-container">
@@ -1212,7 +1222,30 @@ function VideoCard({ video, onSelect }) {
             <div className="card-details">
                 <h4 title={video.title}>{video.title}</h4>
                 <p className="uploader-name"><i className="fas fa-user"></i> {video.uploader || 'YouTube Channel'}</p>
-                {video.views && <p className="view-count"><i className="fas fa-eye"></i> {video.views}</p>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '8px' }}>
+                    {video.views ? <span className="view-count" style={{ margin: 0 }}><i className="fas fa-eye"></i> {video.views}</span> : <span></span>}
+                    <a
+                        href={watchUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={handleExternalClick}
+                        style={{
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            color: '#ffffff',
+                            backgroundColor: '#ff0000',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            flexShrink: 0
+                        }}
+                    >
+                        <i className="fas fa-external-link-alt"></i> Watch / Open
+                    </a>
+                </div>
             </div>
         </div>
     );
