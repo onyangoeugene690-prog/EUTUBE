@@ -29,6 +29,7 @@ html {
     text-rendering: optimizeLegibility;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     box-sizing: border-box;
+    overflow-x: clip;
 }
 
 *, *:before, *:after {
@@ -52,6 +53,8 @@ body {
 
 .container {
     width: min(1120px, calc(100% - 32px));
+    max-width: 100%;
+    min-width: 0;
     background: var(--card-bg);
     padding: clamp(1rem, 4vw, 2.8rem);
     border-radius: 20px;
@@ -71,9 +74,35 @@ header h1 {
     margin: 0 0 0.6rem 0;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 16px;
     letter-spacing: -0.035em;
+}
+
+.logo-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 0;
+    position: relative;
+    margin-left: calc(-1 * clamp(1rem, 4vw, 2.8rem));
+    margin-right: calc(-1 * clamp(1rem, 4vw, 2.8rem));
+    gap: 14px 24px;
+    background-color: #3d1956;
+    padding: 10px 22px;
+    border-radius: 0;
+    box-shadow: 0 4px 18px rgba(61, 25, 86, 0.25), 0 0 0 100vmax #3d1956;
+    clip-path: inset(0 -100vmax);
+}
+
+.brand-description {
+    flex: 1 1 320px;
+    min-width: 0;
+    color: #ffffff;
+    font-size: 0.98rem;
+    font-weight: 500;
+    overflow-wrap: anywhere;
 }
 
 .logo-text {
@@ -98,7 +127,7 @@ header h1 {
     flex: 0 0 auto;
     border-radius: 50%;
     background: #2563eb;
-    border: 2px solid #008000;
+    border: 2px solid #000000;
     color: #fff;
     font-size: inherit;
     transform: translateY(0.04em);
@@ -129,6 +158,7 @@ header p {
 
 #video-url {
     flex: 1;
+    min-width: 0;
     padding: 16px 20px;
     border: 2px solid var(--text-medium);
     border-radius: 12px;
@@ -152,6 +182,7 @@ header p {
 }
 
 #download-btn {
+    flex-shrink: 0;
     padding: 16px 30px;
     background-color: #00c853;
     color: #ffffff;
@@ -187,6 +218,8 @@ header p {
 }
 
 .tag-btn {
+    min-width: 0;
+    max-width: 100%;
     padding: 9px 20px;
     border: 1.5px solid var(--border-sharp);
     background-color: #ffffff;
@@ -251,6 +284,7 @@ header p {
 
 .search-results.grid-view {
     display: grid;
+    min-width: 0;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
     gap: 22px;
     margin-top: 1.2rem;
@@ -279,6 +313,7 @@ header p {
 }
 
 .video-card {
+    min-width: 0;
     background: #ffffff;
     border: 1.5px solid var(--border-light);
     border-radius: 14px;
@@ -398,6 +433,7 @@ header p {
 }
 
 .video-info {
+    min-width: 0;
     background: #ffffff;
     border: 1.5px solid var(--border-sharp);
     border-radius: 16px;
@@ -516,6 +552,7 @@ header p {
     font-weight: 800;
     color: var(--text-dark);
     letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
 }
 
 .channel-name {
@@ -664,11 +701,7 @@ footer p {
 
 @media (max-width: 900px) {
     .container {
-        width: min(760px, calc(100% - 24px));
-    }
-    footer {
-        margin-left: -32px;
-        margin-right: -32px;
+        width: min(900px, calc(100% - 24px));
     }
     .video-info {
         padding: clamp(1rem, 3vw, 1.8rem);
@@ -690,6 +723,16 @@ footer p {
         padding: 1.25rem;
         border-radius: 16px;
     }
+    .logo-wrapper {
+        margin-left: -1.25rem;
+        margin-right: -1.25rem;
+        padding: 10px 16px;
+        gap: 10px 16px;
+    }
+    .brand-description {
+        flex-basis: 100%;
+        font-size: 0.92rem;
+    }
     header h1 {
         font-size: clamp(1.8rem, 8vw, 2.2rem);
         gap: 10px;
@@ -710,10 +753,13 @@ footer p {
         justify-content: center;
     }
     .category-tags {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
     }
     .tag-btn {
-        padding: 8px 14px;
+        justify-content: center;
+        padding: 8px 10px;
     }
     .video-info {
         padding: 1rem;
@@ -761,6 +807,10 @@ footer p {
     header h1 {
         font-size: 1.8rem;
         gap: 8px;
+    }
+    .logo-wrapper {
+        margin-left: -1rem;
+        margin-right: -1rem;
     }
     .section-heading h2 {
         font-size: 1.2rem;
@@ -911,11 +961,13 @@ const DEFAULT_FORMAT_GROUPS = [
 function Header() {
     return (
         <header>
-            <h1>
-                <span className="logo-mark" aria-hidden="true"><i className="fas fa-play"></i></span>
-                <span className="logo-text">EuTube</span>
-            </h1>
-            <p>Fetch, stream, and save high quality 8K, 4K, WEBM, MP4 and MP3 EuTube videos and audios.</p>
+            <div className="logo-wrapper">
+                <h1>
+                    <span className="logo-mark" aria-hidden="true"><i className="fas fa-play"></i></span>
+                    <span className="logo-text">EuTube</span>
+                </h1>
+                <p className="brand-description">Fetch, stream, and save high quality 8K, 4K, WEBM, MP4 and MP3 EuTube videos and audios.</p>
+            </div>
         </header>
     );
 }

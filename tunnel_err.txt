@@ -18,3 +18,4 @@ https://localhost.run/docs/
 
 ** your connection id is 102.212.11.46:1969, please mention it if you send me a message about an issue. **
 
+client_loop: send disconnect: Connection reset

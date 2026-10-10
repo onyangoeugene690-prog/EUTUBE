@@ -54,7 +54,9 @@ INDEX_HTML = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="api-base" content="">
+    <meta name="theme-color" content="#dc2626">
     <title>EuTube</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23dc2626'/%3E%3Cpath d='M26 18v28l22-14z' fill='white'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -65,6 +67,69 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
     <div id="root"></div>
+    <div id="copyright-splash" role="status" aria-live="polite">
+        <main>
+            <p>The website was developed by Eugene Onyango. Copyright &copy; 2026.</p>
+        </main>
+    </div>
+    <style>
+        #copyright-splash {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background: #f8fafc;
+            color: #0f172a;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            animation: copyright-splash-fade-in 0.45s ease-out both;
+        }
+        #copyright-splash main {
+            width: min(100%, 680px);
+            padding: clamp(32px, 8vw, 64px);
+            border: 1px solid #e2e8f0;
+            border-top: 6px solid #dc2626;
+            border-radius: 16px;
+            background: #fff;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+            text-align: center;
+            animation: copyright-card-enter 0.65s cubic-bezier(0.2, 0.75, 0.25, 1) both;
+        }
+        #copyright-splash p {
+            margin: 0;
+            font-size: clamp(1.15rem, 4vw, 1.6rem);
+            font-weight: 600;
+            line-height: 1.6;
+            animation: copyright-text-enter 0.55s 0.18s ease-out both;
+        }
+        @keyframes copyright-splash-fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes copyright-card-enter {
+            from { opacity: 0; transform: translateY(22px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes copyright-text-enter {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #copyright-splash,
+            #copyright-splash main,
+            #copyright-splash p {
+                animation: none;
+            }
+        }
+    </style>
+    <script>
+        window.addEventListener('load', () => {
+            window.setTimeout(() => {
+                document.getElementById('copyright-splash')?.remove();
+            }, 2000);
+        }, { once: true });
+    </script>
     <script type="text/babel" src="App.jsx"></script>
 </body>
 </html>"""

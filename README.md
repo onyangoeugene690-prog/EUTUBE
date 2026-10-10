@@ -2,6 +2,8 @@
 
 This is a simple YouTube downloader website project.
 
+The homepage briefly displays a copyright notice, then automatically reveals the downloader interface after two seconds.
+
 ## Project Structure
 - `index.html`: The frontend user interface.
 - `style.css`: The styling for the website.
