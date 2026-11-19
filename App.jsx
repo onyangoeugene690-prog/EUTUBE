@@ -139,6 +139,7 @@ header h1 {
     transform: translateX(0.06em);
     color: #ffffff;
     -webkit-text-fill-color: #ffffff;
+    -webkit-text-stroke: 1px #111827;
     text-shadow: none;
 }
 
@@ -250,13 +251,47 @@ header p {
 }
 
 .status-message {
-    margin-bottom: 1.8rem;
+    margin-bottom: 0.6rem;
     font-family: var(--font-primary);
     font-weight: 600;
     font-size: 1rem;
     letter-spacing: -0.01em;
     min-height: 26px;
     text-align: center;
+}
+
+.auto-fetch-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 4px;
+}
+
+.auto-fetch-btn {
+    padding: 8px 18px;
+    border: 1.5px solid var(--primary-brand);
+    background: rgba(0, 200, 83, 0.08);
+    color: var(--primary-brand);
+    border-radius: 20px;
+    font-family: var(--font-primary);
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.auto-fetch-btn:hover {
+    background: var(--primary-brand);
+    color: #ffffff;
+    box-shadow: 0 3px 10px var(--primary-glow);
+}
+
+.auto-fetch-btn.paused {
+    border-color: var(--border-sharp);
+    background: #f1f5f9;
+    color: var(--text-muted);
 }
 
 .section-heading {
@@ -1014,13 +1049,26 @@ function CategoryTags({ activeCategory, onSelectCategory }) {
     );
 }
 
-function StatusMessage({ status }) {
-    if (!status || !status.text) return <div id="status" className="status-message"></div>;
-
+function StatusMessage({ status, autoFetchActive, onToggleAutoFetch }) {
     return (
-        <div id="status" className="status-message" style={{ color: status.color || '#555' }}>
-            {status.loading && <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>}
-            {status.text}
+        <div className="status-container" style={{ textAlign: 'center', marginBottom: '1.8rem' }}>
+            {status && status.text && (
+                <div id="status" className="status-message" style={{ color: status.color || '#555', marginBottom: '8px' }}>
+                    {status.loading && <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>}
+                    {status.text}
+                </div>
+            )}
+            <div className="auto-fetch-container">
+                <button
+                    type="button"
+                    className={`auto-fetch-btn ${!autoFetchActive ? 'paused' : ''}`}
+                    onClick={onToggleAutoFetch}
+                    title="Click to pause or resume continuous endless video fetching"
+                >
+                    <i className={autoFetchActive ? "fas fa-sync fa-spin" : "fas fa-pause-circle"}></i>
+                    {autoFetchActive ? " Endless Live Video Fetching: ACTIVE" : " Endless Live Video Fetching: PAUSED"}
+                </button>
+            </div>
         </div>
     );
 }
@@ -1315,17 +1363,17 @@ function SkeletonCard() {
     );
 }
 
-function VideoGrid({ heading, videos, isLoading, continuation, onLoadMore, isLoadingMore, onSelectVideo }) {
+function VideoGrid({ heading, videos, isLoading, onLoadMore, isLoadingMore, onSelectVideo }) {
     const triggerRef = useRef(null);
 
     useEffect(() => {
-        if (!continuation || isLoadingMore) return;
+        if (isLoadingMore) return;
 
         const observer = new IntersectionObserver((entries) => {
             if (entries.some(entry => entry.isIntersecting)) {
                 onLoadMore();
             }
-        }, { rootMargin: '500px 0px' });
+        }, { rootMargin: '1200px 0px' });
 
         const node = triggerRef.current;
         if (node) observer.observe(node);
@@ -1333,7 +1381,7 @@ function VideoGrid({ heading, videos, isLoading, continuation, onLoadMore, isLoa
         return () => {
             if (node) observer.unobserve(node);
         };
-    }, [continuation, isLoadingMore, onLoadMore]);
+    }, [isLoadingMore, onLoadMore]);
 
     return (
         <main>
@@ -1346,20 +1394,18 @@ function VideoGrid({ heading, videos, isLoading, continuation, onLoadMore, isLoa
                     Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
                 ) : videos && videos.length > 0 ? (
                     <>
-                        {videos.map(video => (
-                            <VideoCard key={video.id || video.url} video={video} onSelect={onSelectVideo} />
+                        {videos.map((video, idx) => (
+                            <VideoCard key={video.id ? `${video.id}-${idx}` : idx} video={video} onSelect={onSelectVideo} />
                         ))}
-                        {continuation && (
-                            <button
-                                ref={triggerRef}
-                                type="button"
-                                className="load-more-trigger"
-                                disabled={isLoadingMore}
-                                onClick={onLoadMore}
-                            >
-                                {isLoadingMore ? 'Loading more videos…' : 'Scroll to load more videos'}
-                            </button>
-                        )}
+                        <button
+                            ref={triggerRef}
+                            type="button"
+                            className="load-more-trigger"
+                            disabled={isLoadingMore}
+                            onClick={onLoadMore}
+                        >
+                            {isLoadingMore ? 'Fetching countlessly…' : 'Scroll to fetch more videos'}
+                        </button>
                     </>
                 ) : (
                     <p className="no-results">No videos found matching your search.</p>
@@ -1385,11 +1431,42 @@ function App() {
     const [videos, setVideos] = useState([]);
     const [selectedVideo, setSelectedVideo] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [continuation, setContinuation] = useState(null);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
-    const [listingType, setListingType] = useState('category'); // 'category' or 'search'
-    const [listingValue, setListingValue] = useState('trending');
+
+    // Continuous Endless Fetch State & Refs
+    const [autoFetchActive, setAutoFetchActive] = useState(true);
+    const [continuation, setContinuationState] = useState(null);
+    const [listingType, setListingTypeState] = useState('category'); // 'category' or 'search'
+    const [listingValue, setListingValueState] = useState('trending');
+
+    const continuationRef = useRef(null);
+    const listingTypeRef = useRef('category');
+    const listingValueRef = useRef('trending');
+    const autoFetchActiveRef = useRef(true);
+    const isFetchingRef = useRef(false);
+    const currentCategoryIdxRef = useRef(0);
     const seenVideoIds = useRef(new Set());
+
+    const setContinuation = (val) => {
+        continuationRef.current = val;
+        setContinuationState(val);
+    };
+
+    const setListingType = (val) => {
+        listingTypeRef.current = val;
+        setListingTypeState(val);
+    };
+
+    const setListingValue = (val) => {
+        listingValueRef.current = val;
+        setListingValueState(val);
+    };
+
+    const toggleAutoFetch = () => {
+        const nextVal = !autoFetchActiveRef.current;
+        autoFetchActiveRef.current = nextVal;
+        setAutoFetchActive(nextVal);
+    };
 
     const updateStatus = useCallback((st) => {
         setStatus(st);
@@ -1405,16 +1482,86 @@ function App() {
         });
     }, []);
 
+    // Endless Continuous Next Batch Fetcher
+    const fetchNextBatch = useCallback(async () => {
+        if (isFetchingRef.current || !autoFetchActiveRef.current) return;
+        isFetchingRef.current = true;
+        setIsLoadingMore(true);
+
+        try {
+            let endpoint = '/api/trending';
+            let params = {};
+            const curCont = continuationRef.current;
+            const curType = listingTypeRef.current;
+            const curVal = listingValueRef.current;
+
+            if (curType === 'search') {
+                endpoint = '/api/info';
+                if (curCont) {
+                    params = { url: curVal, continuation: curCont };
+                } else {
+                    // Search tokens finished: switch to endless category rotation
+                    currentCategoryIdxRef.current = (currentCategoryIdxRef.current + 1) % CATEGORIES.length;
+                    const nextCat = CATEGORIES[currentCategoryIdxRef.current];
+                    setListingType('category');
+                    setListingValue(nextCat.id);
+                    setActiveCategory(nextCat.id);
+                    setHeadingText(`${nextCat.name} Videos`);
+                    endpoint = '/api/trending';
+                    params = { category: nextCat.id };
+                }
+            } else {
+                // Category mode
+                if (curCont) {
+                    params = { category: curVal, continuation: curCont };
+                } else {
+                    // Category tokens finished: advance to next category seamlessly!
+                    currentCategoryIdxRef.current = (currentCategoryIdxRef.current + 1) % CATEGORIES.length;
+                    const nextCat = CATEGORIES[currentCategoryIdxRef.current];
+                    setListingValue(nextCat.id);
+                    setActiveCategory(nextCat.id);
+                    setHeadingText(`${nextCat.name} Videos`);
+                    endpoint = '/api/trending';
+                    params = { category: nextCat.id };
+                }
+            }
+
+            const data = await fetchApi(endpoint, params);
+            const newVideos = filterNewVideos(data.results || []);
+
+            if (newVideos.length > 0) {
+                setVideos(prev => {
+                    const total = prev.length + newVideos.length;
+                    setStatus({
+                        text: `Loaded ${total} videos countlessly — continuous live fetching active`,
+                        color: '#00c853',
+                        loading: true
+                    });
+                    return [...prev, ...newVideos];
+                });
+            }
+            setContinuation(data.continuation || null);
+        } catch (err) {
+            console.warn('Continuous auto-fetch error:', err);
+        } finally {
+            setIsLoadingMore(false);
+            isFetchingRef.current = false;
+        }
+    }, [filterNewVideos]);
+
     // Load Category Videos
     const loadCategoryVideos = useCallback(async (catId, catName) => {
         setActiveCategory(catId);
         setHeadingText(`${catName} Videos`);
         setIsLoading(true);
-        setStatus({ text: 'Fetching videos from YouTube...', color: '#555', loading: true });
+        setStatus({ text: 'Fetching endless videos from YouTube...', color: '#555', loading: true });
         setSelectedVideo(null);
         setListingType('category');
         setListingValue(catId);
         seenVideoIds.current.clear();
+
+        const idx = CATEGORIES.findIndex(c => c.id === catId);
+        if (idx !== -1) currentCategoryIdxRef.current = idx;
 
         try {
             const data = await fetchApi('/api/trending', { category: catId });
@@ -1425,9 +1572,9 @@ function App() {
 
             if (newVideos.length > 0) {
                 setStatus({
-                    text: `Loaded ${newVideos.length} videos${data.continuation ? ' — scroll for more' : ''}`,
+                    text: `Loaded ${newVideos.length} videos countlessly — continuous live fetching active`,
                     color: '#00c853',
-                    loading: false
+                    loading: true
                 });
             } else {
                 setStatus({ text: 'No videos found.', color: '#555', loading: false });
@@ -1439,10 +1586,21 @@ function App() {
         }
     }, [filterNewVideos]);
 
-    // Initial Fetch on mount
+    // Initial Fetch when website opens
     useEffect(() => {
         loadCategoryVideos('trending', 'Trending');
     }, [loadCategoryVideos]);
+
+    // Endless Continuous Fetch Interval Loop
+    useEffect(() => {
+        const timer = setInterval(() => {
+            if (autoFetchActiveRef.current && !isLoading && !isFetchingRef.current) {
+                fetchNextBatch();
+            }
+        }, 300);
+
+        return () => clearInterval(timer);
+    }, [isLoading, fetchNextBatch]);
 
     // Perform Search
     const handleSearch = async () => {
@@ -1470,9 +1628,9 @@ function App() {
                 setIsLoading(false);
 
                 setStatus({
-                    text: `Loaded ${newVideos.length} results from YouTube${data.continuation ? ' — scroll for more' : ''}. Select a video to view or download:`,
+                    text: `Loaded ${newVideos.length} results countlessly — continuous live fetching active`,
                     color: '#00c853',
-                    loading: false
+                    loading: true
                 });
             } else {
                 setIsLoading(false);
@@ -1494,38 +1652,6 @@ function App() {
         }
     };
 
-    // Load More Videos
-    const handleLoadMore = async () => {
-        if (!continuation || isLoadingMore) return;
-
-        setIsLoadingMore(true);
-
-        const endpoint = listingType === 'category' ? '/api/trending' : '/api/info';
-        const params = listingType === 'category'
-            ? { category: listingValue, continuation }
-            : { url: listingValue, continuation };
-
-        try {
-            const data = await fetchApi(endpoint, params);
-            const newVideos = filterNewVideos(data.results || []);
-
-            setVideos(prev => [...prev, ...newVideos]);
-            setContinuation(data.continuation || null);
-            setIsLoadingMore(false);
-
-            const total = videos.length + newVideos.length;
-            const label = listingType === 'category' ? 'videos' : 'search results';
-            setStatus({
-                text: `Loaded ${total} ${label}${data.continuation ? ' — scroll for more' : ''}`,
-                color: '#00c853',
-                loading: false
-            });
-        } catch (err) {
-            setIsLoadingMore(false);
-            setStatus({ text: getApiErrorMessage(err), color: 'red', loading: false });
-        }
-    };
-
     const handleSelectVideo = (video) => {
         setSelectedVideo(video);
         setStatus({ text: 'Video loaded! Stream above or choose a format to download below:', color: '#28a745', loading: false });
@@ -1541,14 +1667,17 @@ function App() {
                 activeCategory={activeCategory}
                 onSelectCategory={(cat) => loadCategoryVideos(cat.id, cat.name)}
             />
-            <StatusMessage status={status} />
+            <StatusMessage
+                status={status}
+                autoFetchActive={autoFetchActive}
+                onToggleAutoFetch={toggleAutoFetch}
+            />
             <VideoPlayerSection selectedVideo={selectedVideo} onStatusChange={updateStatus} />
             <VideoGrid
                 heading={headingText}
                 videos={videos}
                 isLoading={isLoading}
-                continuation={continuation}
-                onLoadMore={handleLoadMore}
+                onLoadMore={fetchNextBatch}
                 isLoadingMore={isLoadingMore}
                 onSelectVideo={handleSelectVideo}
             />

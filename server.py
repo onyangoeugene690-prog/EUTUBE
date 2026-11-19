@@ -17,8 +17,8 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
 SEARCH_PAGE_SIZE = 50
-SEARCH_TIMEOUT_SECONDS = 8
-SEARCH_REQUEST_TIMEOUT_SECONDS = 4
+SEARCH_TIMEOUT_SECONDS = 4
+SEARCH_REQUEST_TIMEOUT_SECONDS = 2.5
 
 # In-memory TTL Cache
 CACHE = {}
@@ -901,12 +901,14 @@ def download():
         return jsonify({"error": clean_error_message(error)}), 500
 
 def prewarm_cache():
-    categories = ['trending', 'music', 'gaming', 'news', 'tech']
-    for cat in categories:
+    categories = ['trending', 'music', 'gaming', 'news', 'tech', 'sports', 'science', 'education', 'movies', 'comedy', 'travel', 'cooking', 'podcasts', 'animals']
+    def worker(cat):
         try:
             fast_youtube_search(cat)
         except Exception:
             pass
+    for cat in categories:
+        threading.Thread(target=worker, args=(cat,), daemon=True).start()
 
 if __name__ == '__main__':
     print("Starting EuTube Server at http://localhost:5000")
